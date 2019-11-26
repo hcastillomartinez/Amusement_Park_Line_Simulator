@@ -59,9 +59,9 @@ void *time_passage(){
     // printf("%d:%d:%d\n",hours,min,secs);
     current_time+=60;
     time_step++;
-    pthread_cond_signal(&car_cond);
+  
     pthread_cond_signal(&cond);
-    // pthread_cond_signal(&car_cond);
+    pthread_cond_signal(&car_cond);
     printf("p exit\n");
     pthread_mutex_unlock(&lock);
     sleep(1);
@@ -138,7 +138,7 @@ void *carHandler(){
 
 
 int main(void) {
-  int n = 3;
+  int n = 2;
   pthread_t tid1;
   pthread_t tid2;
   pthread_t cars[n];
@@ -153,7 +153,6 @@ int main(void) {
   for(int i = 0 ;i < n;i++){
     pthread_join(cars[i], NULL);
   }
-  // pthread_join(tid1, NULL);
   pthread_mutex_destroy(&lock);
   pthread_cond_destroy(&cond);
   int hours = max_q_time/3600;
