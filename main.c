@@ -20,7 +20,7 @@ static int queue = 0;
 static int maximum_queue = 0;
 static int max_q_time = 0;
 static int max_passengers = 9;
-static int num_cars = 6;
+static int num_cars = 4;
 static int total_rode = 0;
 static int car_sit = 1;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -65,7 +65,7 @@ void *time_passage(){
     time_step++;
   
     pthread_cond_signal(&cond);
-    pthread_cond_signal(&car_cond);
+    pthread_cond_broadcast(&car_cond);
     // printf("p exit\n");
     pthread_mutex_unlock(&lock);
     sleep(1);
@@ -161,6 +161,7 @@ int main(void) {
   }
   pthread_mutex_destroy(&lock);
   pthread_cond_destroy(&cond);
+  pthread_cond_destroy(&car_cond);
   int hours = max_q_time/3600;
   int min = (max_q_time%3600)/60;
   int secs = (max_q_time%3600)%60;
