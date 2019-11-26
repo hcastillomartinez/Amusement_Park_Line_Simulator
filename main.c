@@ -24,7 +24,6 @@ static int num_cars = 4;
 static int total_rode = 0;
 static int car_sit = 1;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-// pthread_mutex_t car_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t car_cond = PTHREAD_COND_INITIALIZER;
 
