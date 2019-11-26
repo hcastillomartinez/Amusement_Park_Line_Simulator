@@ -8,7 +8,8 @@
 #define START 32400
 // debugging end (12 minutes)
 #define END 33120
-// #define END 68400
+// #define END 34000
+//#define END 68400
 #define MAX_QUEUE 800
 static int current_time = START;
 static int incoming_user = 0;
@@ -18,9 +19,11 @@ static int time_step = 0;
 static int queue = 0;
 static int maximum_queue = 0;
 static int max_q_time = 0;
-static int max_passengers = 7;
+static int max_passengers = 9;
 static int total_rode = 0;
+static int car_sit = 1;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t car_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t car_cond = PTHREAD_COND_INITIALIZER;
 
@@ -52,7 +55,7 @@ void *time_passage(){
   while(current_time < END){
 
     pthread_mutex_lock(&lock);
-    printf("time enter\n");
+    // printf("time enter\n");
     int hours = current_time/3600;
     int min = (current_time%3600)/60;
     int secs = (current_time%3600)%60;
@@ -61,8 +64,8 @@ void *time_passage(){
     time_step++;
   
     pthread_cond_signal(&cond);
-    pthread_cond_signal(&car_cond);
-    printf("p exit\n");
+    pthread_cond_broadcast(&car_cond);
+    // printf("p exit\n");
     pthread_mutex_unlock(&lock);
     sleep(1);
   }
@@ -76,7 +79,7 @@ void *incomingP_handler(){
   while(current_time < END){
     pthread_mutex_lock(&lock);
     pthread_cond_wait(&cond,&lock);
-    printf("p enter\n");
+    // printf("p enter\n");
     int hours = current_time/3600;
     int min = (current_time%3600)/60;
     int secs = (current_time%3600)%60;
@@ -102,8 +105,8 @@ void *incomingP_handler(){
         maximum_queue = queue;
       }
     }
-    printf("p exit\n");
-    pthread_cond_signal(&car_cond);
+    // printf("p exit\n");
+    pthread_cond_broadcast(&car_cond);
     pthread_mutex_unlock(&lock);
     // sleep(1);
   }
@@ -119,7 +122,7 @@ void *carHandler(){
   while(current_time < END){
     pthread_mutex_lock(&lock);
     pthread_cond_wait(&car_cond, &lock);
-    printf("enter\n");
+    pthread_mutex_lock(&car_lock);
     int diff = queue - max_passengers;
     if(diff >= 0){
       queue -= max_passengers;
@@ -129,8 +132,10 @@ void *carHandler(){
       queue -= queue;
       total_rode += max_passengers;
     }
-    printf("exit\n");
+    // printf("exit\n");
+    pthread_mutex_unlock(&car_lock);
     pthread_mutex_unlock(&lock);
+    sleep(car_sit);
   }
 
   return NULL;
@@ -138,7 +143,7 @@ void *carHandler(){
 
 
 int main(void) {
-  int n = 2;
+  int n = 10;
   pthread_t tid1;
   pthread_t tid2;
   pthread_t cars[n];
