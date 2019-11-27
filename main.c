@@ -11,6 +11,21 @@
 // #define END 34000
 //#define END 68400
 #define MAX_QUEUE 800
+struct Human{
+  int spawn_time;
+  int wait_time;
+};
+struct Queue{
+  struct QueueNode *head;
+  struct QueueNode *tail;
+};
+struct QueueNode{
+  struct Human human;
+  struct QueueNode* next;
+};
+static struct Queue* actual_line;
+static struct Queue* total_line;
+
 static int current_time = START;
 static int incoming_user = 0;
 static int total_incoming = 0;
@@ -19,13 +34,133 @@ static int time_step = 0;
 static int queue = 0;
 static int maximum_queue = 0;
 static int max_q_time = 0;
-static int max_passengers = 9;
-static int num_cars = 4;
+static int max_passengers = 7;
+static int num_cars = 2;
 static int total_rode = 0;
 static int car_sit = 1;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t car_cond = PTHREAD_COND_INITIALIZER;
+
+/*
+  Used to create a node for the Queue
+  Sets human to track track time it was created.
+*/
+struct QueueNode* createNode(){
+  struct QueueNode* x = malloc(sizeof(struct QueueNode));
+  struct Human h = {current_time, 0};
+  x->human = h;
+  x->next=NULL;
+  return x;
+}
+
+/*
+  Initializes a Queue
+*/
+struct Queue* initQueue(){
+  struct Queue* line = (struct Queue*)malloc(sizeof(struct Queue));
+  line->head = NULL;
+  line->tail = NULL;
+  return line;
+}
+
+/*
+  Adds a node to the queue. Does pass anythin as we just use the current time to initialize a node's human variables.
+*/
+void enqueue(struct Queue* line){
+  struct QueueNode* t = createNode();
+  if (line->tail == NULL){
+    line->head = t;
+    line->tail = t;
+  }
+  else{
+    line->tail->next=t;
+    line->tail = t;
+  }
+}
+/*
+  Used when keeping track of removed people. Only called when we are
+  person is getting on a ride (dequeueing)
+*/
+void enqueue2(struct Queue* line,struct QueueNode* node){
+  node->human.wait_time = current_time - node->human.spawn_time;
+  if (line->tail == NULL){
+    line->head = node;
+    line->tail = node;
+  }
+  else{
+    line->tail->next=node;
+    line->tail = node;
+  }
+}
+/*
+  Removes a node from a queue and sets it in another queue. Latter
+  Queue is only used for tracking avg time.
+*/
+struct QueueNode* deQueue(struct Queue* line,struct Queue* total_line) 
+{  
+    if (line->head == NULL){
+      return NULL; 
+    }
+    else{ 
+      struct QueueNode* temp = line->head;
+      enqueue2(total_line,temp); 
+      // free(temp); 
+      line->head = line->head->next; 
+      if (line->head == NULL) 
+          line->tail = NULL; 
+      return temp;
+    } 
+} 
+
+/*
+  Prints the Queue from head to tail.
+*/
+void printQueue(struct Queue* line){
+  struct QueueNode* q= line->head;
+  while(q!=NULL){
+    printf("spawn_time = %d wait_time = %d\n", q->human.spawn_time, q->human.wait_time);
+    q=q->next;
+  }
+}
+/*
+  Computes the average wait time of people in the line. Used when people have already gotten off the ride.
+*/
+int avgWait(struct Queue* line){
+  struct QueueNode* q = line->head;
+  int exited = 0;
+  int minutes_waited = 0;
+  while(q!=NULL){
+    if(q->human.wait_time !=0){
+      minutes_waited += q->human.wait_time;
+      exited ++;
+    }
+    q = q->next;
+  }
+  return (minutes_waited/exited)/60;
+}
+
+/*
+  Useful when we are loading in more than 1 person at a time.
+*/
+void loadIn(struct Queue* actual, struct Queue* total, int toRemove){
+  for(int i =0; i<toRemove;i++){
+    deQueue(actual,total);
+  }
+}
+
+/*
+  Returns the number of nodes in the queue.
+*/
+int queueSize(struct Queue* line){
+  struct QueueNode* q= line->head;
+  int count = 0;
+  while(q!=NULL){
+    count++;
+    q=q->next;
+  }
+  return count;
+}
 
 /*
 Used to generate the # of incoming people based
@@ -79,16 +214,17 @@ void *incomingP_handler(){
   while(current_time < END){
     pthread_mutex_lock(&lock);
     pthread_cond_wait(&cond,&lock);
-    // printf("p enter\n");
     int hours = current_time/3600;
     int min = (current_time%3600)/60;
     int secs = (current_time%3600)%60;
     incomingP();
     int incoming = poissonRandom(incoming_user);
     total_incoming += incoming;
-
     if((queue+incoming) <= MAX_QUEUE){
       queue+= incoming;
+      for(int i =0; i < incoming;i++){
+        enqueue(actual_line);
+      }
       printf("%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, 0, queue, hours, min, secs);
       if (maximum_queue <= queue){
         max_q_time = current_time;
@@ -98,6 +234,9 @@ void *incomingP_handler(){
     else{
       int diff = 800 - queue;
       queue += diff;
+      for(int i = 0; i< diff;i++){
+        enqueue(actual_line);
+      }
       total_rejected += diff;
       printf("%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, incoming-diff, queue, hours, min, secs);
       if (maximum_queue <= queue){
@@ -126,10 +265,12 @@ void *carHandler(){
     int diff = queue - max_passengers;
     if(diff >= 0){
       queue -= max_passengers;
+      loadIn(actual_line, total_line, max_passengers);
       total_rode += max_passengers;
     }
     else{
       queue -= queue;
+      loadIn(actual_line, total_line, queue);
       total_rode += queue;
     }
     // printf("exit\n");
@@ -144,10 +285,12 @@ void *carHandler(){
 
 
 int main(void) {
+  actual_line = initQueue();
+  total_line = initQueue();
   pthread_t tid1;
   pthread_t tid2;
   pthread_t cars[num_cars];
-  // pthread_mutex_init(&lock, NULL);
+  pthread_mutex_init(&lock, NULL);
   pthread_create(&tid1,NULL,time_passage,(void *)NULL);
   pthread_create(&tid2,NULL,incomingP_handler,(void *)NULL);
   for(int i = 0; i < num_cars; i ++){
@@ -164,6 +307,6 @@ int main(void) {
   int hours = max_q_time/3600;
   int min = (max_q_time%3600)/60;
   int secs = (max_q_time%3600)%60;
-  printf("\nTotal Number of Guests: %d, Total Number of People on Ride: %d, Total Number of People Rejected: %d, Average Waiting Time: %d, Maximum Length of Line for Day and Time of Occurence: %d at %d:%d:%d\n", total_incoming, total_rode, total_rejected, time_step, maximum_queue, hours, min, secs);
+  printf("\nTotal Number of Guests: %d, Total Number of People on Ride: %d, Total Number of People Rejected: %d, Average Waiting Time: %d, Maximum Length of Line for Day and Time of Occurence: %d at %d:%d:%d\n", total_incoming, total_rode, total_rejected, avgWait(total_line), maximum_queue, hours, min, secs);
   return 0;
 }
