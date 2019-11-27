@@ -46,13 +46,15 @@ static int time_step = 0;
 static int queue = 0;
 static int maximum_queue = 0;
 static int max_q_time = 0;
-static int max_passengers = 7;
-static int num_cars = 6;
+static int max_passengers = 10;
+static int num_cars = 2;
 static int total_rode = 0;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t car_cond = PTHREAD_COND_INITIALIZER;
 FILE *fp;
+FILE *graph1;
+FILE *graph2;
 
 // fp = fopen("test.txt", "w+");
 
@@ -253,6 +255,7 @@ void *incomingP_handler(){
         enqueue(actual_line);
       }
       int current_rej = incoming - diff;
+      fprintf(graph2, "%d ", current_rej);
       total_rejected += current_rej;
       fprintf(fp, "%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, current_rej, queue, hours, min, secs);
       if (maximum_queue <= queue){
@@ -260,6 +263,7 @@ void *incomingP_handler(){
         maximum_queue = queue;
       }
     }
+    fprintf(graph1, "%d ",queue);
     // printf("p exit\n");
     // pthread_cond_signal(&car_cond);
     pthread_mutex_unlock(&lock);
@@ -289,17 +293,21 @@ void *carHandler(){
     }
     pthread_cond_broadcast(&car_cond);
     pthread_mutex_unlock(&lock);
-    usleep(1000);
+    usleep(2000);
   }
 
   return NULL;
 }
 
 
-int main(void) {
+int main(int argc, char *argv[]) {
+  // max_passengers = atoi(argv[1]);
+  // num_cars = atoi(argv[2]);
   actual_line = initQueue();
   total_line = initQueue();
   fp = fopen("test.txt", "w+");
+  graph1= fopen("pWait.txt", "w+");
+  graph2 =fopen("rejection.txt", "w+");
   pthread_t tid1;
   pthread_t tid2;
   pthread_t cars[num_cars];
@@ -322,5 +330,7 @@ int main(void) {
   int secs = (max_q_time%3600)%60;
   fprintf(fp,"\nTotal Number of Guests: %d, Total Number of People on Ride: %d, Total Number of People Rejected: %d, Average Waiting Time: %d, Maximum Length of Line for Day and Time of Occurence: %d at %d:%d:%d\n", total_incoming, total_rode, total_rejected, avgWait(total_line), maximum_queue, hours, min, secs);
   fclose(fp);
+  fclose(graph1);
+  fclose(graph2);
   return 0;
 }
