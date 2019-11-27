@@ -7,18 +7,30 @@
 
 #define START 32400
 // debugging end (12 minutes)
-#define END 33120
+// #define END 33120
 // #define END 34000
-//#define END 68400
+#define END 68400
 #define MAX_QUEUE 800
+/*
+  Human struct created to keep track of when they spawn and
+  when they exit the line.
+*/
 struct Human{
   int spawn_time;
   int wait_time;
 };
+/*
+  Struct that represents a Queue. Only need to track the head and
+  the tail, rest can be found through pointers.
+*/
 struct Queue{
   struct QueueNode *head;
   struct QueueNode *tail;
 };
+/*
+  Struct used to represent a node in the Queue. Consists of a human
+  and a pointer to the next node.
+*/
 struct QueueNode{
   struct Human human;
   struct QueueNode* next;
@@ -35,12 +47,14 @@ static int queue = 0;
 static int maximum_queue = 0;
 static int max_q_time = 0;
 static int max_passengers = 7;
-static int num_cars = 2;
+static int num_cars = 6;
 static int total_rode = 0;
-static int car_sit = 1;
 pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 pthread_cond_t car_cond = PTHREAD_COND_INITIALIZER;
+FILE *fp;
+
+// fp = fopen("test.txt", "w+");
 
 /*
   Used to create a node for the Queue
@@ -186,7 +200,7 @@ Just increments time as fast as it can at the moment
 does not really map virtual minute to real second.
 */
 void *time_passage(){
-  sleep(1);
+  usleep(10000);
   while(current_time < END){
 
     pthread_mutex_lock(&lock);
@@ -202,7 +216,7 @@ void *time_passage(){
     pthread_cond_broadcast(&car_cond);
     // printf("p exit\n");
     pthread_mutex_unlock(&lock);
-    sleep(1);
+    usleep(10000);
   }
   return NULL;
 }
@@ -225,20 +239,22 @@ void *incomingP_handler(){
       for(int i =0; i < incoming;i++){
         enqueue(actual_line);
       }
-      printf("%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, 0, queue, hours, min, secs);
+      fprintf(fp, "%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, 0, queue, hours, min, secs);
       if (maximum_queue <= queue){
         max_q_time = current_time;
         maximum_queue = queue;
       }
     }
     else{
-      int diff = 800 - queue;
+
+      int diff = MAX_QUEUE - queue;
       queue += diff;
       for(int i = 0; i< diff;i++){
         enqueue(actual_line);
       }
-      total_rejected += diff;
-      printf("%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, incoming-diff, queue, hours, min, secs);
+      int current_rej = incoming - diff;
+      total_rejected += current_rej;
+      fprintf(fp, "%d arrive %d reject %d wait-line %d at %d:%d:%d\n",time_step, incoming, current_rej, queue, hours, min, secs);
       if (maximum_queue <= queue){
         max_q_time = current_time;
         maximum_queue = queue;
@@ -247,7 +263,7 @@ void *incomingP_handler(){
     // printf("p exit\n");
     // pthread_cond_signal(&car_cond);
     pthread_mutex_unlock(&lock);
-    // sleep(1);
+    // usleep(10000);
   }
   return NULL;
 }
@@ -257,11 +273,9 @@ void *incomingP_handler(){
   Handles the things that cars needs to do.
 */
 void *carHandler(){
-
   while(current_time < END){
     pthread_mutex_lock(&lock);
     pthread_cond_wait(&car_cond, &lock);
-    // pthread_mutex_lock(&car_lock);
     int diff = queue - max_passengers;
     if(diff >= 0){
       queue -= max_passengers;
@@ -273,11 +287,9 @@ void *carHandler(){
       loadIn(actual_line, total_line, queue);
       total_rode += queue;
     }
-    // printf("exit\n");
-    // pthread_mutex_unlock(&car_lock);
-    pthread_cond_signal(&car_cond);
+    pthread_cond_broadcast(&car_cond);
     pthread_mutex_unlock(&lock);
-    sleep(car_sit);
+    usleep(1000);
   }
 
   return NULL;
@@ -287,6 +299,7 @@ void *carHandler(){
 int main(void) {
   actual_line = initQueue();
   total_line = initQueue();
+  fp = fopen("test.txt", "w+");
   pthread_t tid1;
   pthread_t tid2;
   pthread_t cars[num_cars];
@@ -307,6 +320,7 @@ int main(void) {
   int hours = max_q_time/3600;
   int min = (max_q_time%3600)/60;
   int secs = (max_q_time%3600)%60;
-  printf("\nTotal Number of Guests: %d, Total Number of People on Ride: %d, Total Number of People Rejected: %d, Average Waiting Time: %d, Maximum Length of Line for Day and Time of Occurence: %d at %d:%d:%d\n", total_incoming, total_rode, total_rejected, avgWait(total_line), maximum_queue, hours, min, secs);
+  fprintf(fp,"\nTotal Number of Guests: %d, Total Number of People on Ride: %d, Total Number of People Rejected: %d, Average Waiting Time: %d, Maximum Length of Line for Day and Time of Occurence: %d at %d:%d:%d\n", total_incoming, total_rode, total_rejected, avgWait(total_line), maximum_queue, hours, min, secs);
+  fclose(fp);
   return 0;
 }
